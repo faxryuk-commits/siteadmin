@@ -215,17 +215,37 @@ export const EDITOR_SCRIPT = `
   document.head.appendChild(style);
 
   // Загружаем элементы при загрузке страницы
-  window.addEventListener('load', function() {
-    setTimeout(() => {
+  function sendElements() {
+    try {
       const elements = scanEditableElements();
       editableElements = elements;
+      
+      console.log('Sending elements to parent:', elements.length);
       
       window.parent.postMessage({
         type: 'ELEMENTS_LOADED',
         payload: { elements }
       }, '*');
-    }, 1000);
-  });
+    } catch (error) {
+      console.error('Error sending elements:', error);
+    }
+  }
+
+  // Пытаемся отправить элементы сразу, если DOM готов
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(sendElements, 500);
+  } else {
+    window.addEventListener('load', function() {
+      setTimeout(sendElements, 500);
+    });
+  }
+  
+  // Также пытаемся отправить через DOMContentLoaded
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(sendElements, 500);
+    });
+  }
 
   // Обработчик сообщений от родительского окна
   window.addEventListener('message', function(event) {
