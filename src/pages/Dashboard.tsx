@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import type { PageStructure } from '@/contexts/ContentContext'
 
 export function Dashboard() {
-  const { pages, currentPage, setCurrentPage, addPage, deletePage } = useContent()
+  const { pages, setCurrentPage, addPage, deletePage } = useContent()
   const [showAddPage, setShowAddPage] = useState(false)
   const [newPageName, setNewPageName] = useState('')
   const [newPagePath, setNewPagePath] = useState('')

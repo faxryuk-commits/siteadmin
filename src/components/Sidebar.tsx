@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileEdit, LogOut, Settings } from 'lucide-react'
+import { LayoutDashboard, FileEdit, LogOut } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
