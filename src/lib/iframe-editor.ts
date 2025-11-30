@@ -286,7 +286,7 @@ export function injectEditorScript(iframe: HTMLIFrameElement) {
 
     // Если iframe уже загружен
     if (iframe.contentDocument?.readyState === 'complete') {
-      iframe.onload = undefined;
+      iframe.onload = null;
       injectEditorScript(iframe);
     }
   });

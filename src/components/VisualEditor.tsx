@@ -1,18 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useContent, ContentItem } from '@/contexts/ContentContext'
+import { useContent } from '@/contexts/ContentContext'
 import { 
-  Trash2, 
   Eye, 
   EyeOff, 
   Save, 
   X,
-  Type,
-  Square,
-  MousePointerClick,
-  Image as ImageIcon,
-  RefreshCw,
-  Download
+  RefreshCw
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -24,8 +17,7 @@ interface VisualEditorProps {
 }
 
 export function VisualEditor({ iframeUrl }: VisualEditorProps) {
-  const { currentPage, updateContentItem, addContentItem, deleteContentItem, syncToSite } = useContent()
-  const navigate = useNavigate()
+  const { syncToSite: syncToSiteContext } = useContent()
   const [selectedElement, setSelectedElement] = useState<EditableElement | null>(null)
   const [editingValue, setEditingValue] = useState('')
   const [isPreviewMode, setIsPreviewMode] = useState(false)
@@ -159,6 +151,9 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
       // Импортируем функцию сохранения
       const { saveElementChanges } = await import('@/lib/api')
       await saveElementChanges(changes)
+      
+      // Также синхронизируем через контекст
+      await syncToSiteContext()
       
       toast.success('Изменения синхронизированы с сайтом')
     } catch (error) {
