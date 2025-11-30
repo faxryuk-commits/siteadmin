@@ -3,6 +3,7 @@ import { useContent } from '@/contexts/ContentContext'
 import { Plus, Edit2, Trash2, ExternalLink, Globe } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PageStructure } from '@/contexts/ContentContext'
+import { SITE_URL } from '@/lib/config'
 
 export function Dashboard() {
   const { pages, setCurrentPage, addPage, deletePage } = useContent()
@@ -43,7 +44,7 @@ export function Dashboard() {
   }
 
   const handleViewPage = (page: PageStructure) => {
-    window.open(`https://delever.io${page.path}`, '_blank')
+    window.open(`${SITE_URL}${page.path}`, '_blank')
   }
 
   const defaultPages: PageStructure[] = [

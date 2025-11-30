@@ -1,7 +1,5 @@
 // API для синхронизации с основным сайтом
-
-const API_URL = import.meta.env.VITE_API_URL || 'https://api.delever.io'
-const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://delever.io'
+import { API_URL, SITE_URL } from './config'
 
 export interface SyncRequest {
   pages: any[]

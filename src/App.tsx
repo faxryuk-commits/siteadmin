@@ -7,12 +7,13 @@ import { Dashboard } from './pages/Dashboard'
 import { VisualEditor } from './components/VisualEditor'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
+import { SITE_URL } from './lib/config'
 
 function EditorPage() {
   const { currentPage } = useContent()
   const iframeUrl = currentPage 
-    ? `https://delever.io${currentPage.path}?edit=true`
-    : 'https://delever.io'
+    ? `${SITE_URL}${currentPage.path}?edit=true`
+    : SITE_URL
 
   return <VisualEditor iframeUrl={iframeUrl} />
 }
