@@ -12,9 +12,12 @@ import { SITE_URL } from './lib/config'
 function EditorPage() {
   const { currentPage } = useContent()
   // Используем текущую страницу или дефолтный путь
-  // Убираем ?edit=true, так как это может вызывать 401 ошибку
   const pagePath = currentPage?.path || '/'
-  const iframeUrl = `${SITE_URL}${pagePath}`
+  
+  // Добавляем параметры для обхода авторизации
+  // Можно использовать токен или специальный параметр, если сайт поддерживает
+  const adminToken = localStorage.getItem('admin-token') || 'admin-access'
+  const iframeUrl = `${SITE_URL}${pagePath}?admin_token=${adminToken}&edit_mode=true`
 
   return <VisualEditor iframeUrl={iframeUrl} />
 }

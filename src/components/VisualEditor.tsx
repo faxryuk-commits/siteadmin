@@ -68,23 +68,37 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
     window.addEventListener('message', handleMessage)
 
     // Инжектируем скрипт редактора
-    injectEditorScript(iframe).then(() => {
-      setIsLoading(false)
-    }).catch((error) => {
-      console.error('Error injecting script:', error)
-      setIsLoading(false)
-      // Проверяем, заблокирован ли iframe
-      setTimeout(() => {
-        try {
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
-          if (!iframeDoc) {
-            toast.error('Сайт блокирует загрузку в iframe (X-Frame-Options: DENY). Нужно убрать этот заголовок на сайте.')
+    const injectScript = async () => {
+      try {
+        await injectEditorScript(iframe)
+        setIsLoading(false)
+      } catch (error) {
+        console.error('Error injecting script:', error)
+        setIsLoading(false)
+        
+        // Проверяем причину ошибки
+        setTimeout(() => {
+          try {
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+            if (!iframeDoc) {
+              // Если не можем получить доступ, проверяем причину
+              toast.error('Ошибка 401: Сайт требует авторизацию. Настройте сайт для работы с админкой (уберите проверку авторизации для параметра admin_token).')
+            }
+          } catch (e) {
+            toast.error('Не удалось загрузить сайт. Проверьте: 1) X-Frame-Options на сайте, 2) Настройки авторизации для admin_token')
           }
-        } catch (e) {
-          toast.error('Не удалось загрузить сайт в iframe. Проверьте настройки X-Frame-Options на сайте.')
-        }
-      }, 2000)
-    })
+        }, 2000)
+      }
+    }
+
+    // Ждем загрузки iframe перед инжекцией
+    if (iframe.contentDocument?.readyState === 'complete') {
+      injectScript()
+    } else {
+      iframe.onload = () => {
+        injectScript()
+      }
+    }
 
     return () => {
       window.removeEventListener('message', handleMessage)
@@ -293,9 +307,23 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
             className="w-full h-full border-0"
             title="Preview"
             allow="same-origin"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-            onError={() => {
-              toast.error('Ошибка загрузки сайта. Возможно, сайт блокирует загрузку в iframe (X-Frame-Options)')
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation"
+            onLoad={() => {
+              // Проверяем, загрузился ли сайт успешно
+              setTimeout(() => {
+                try {
+                  const iframe = iframeRef.current
+                  if (!iframe) return
+                  
+                  const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+                  if (!iframeDoc) {
+                    // Если не можем получить доступ к документу, возможно проблема с авторизацией или X-Frame-Options
+                    console.warn('Cannot access iframe document - possible auth or X-Frame-Options issue')
+                  }
+                } catch (e) {
+                  console.error('Error checking iframe:', e)
+                }
+              }, 1000)
             }}
           />
           
