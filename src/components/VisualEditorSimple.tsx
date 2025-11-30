@@ -22,18 +22,35 @@ export function VisualEditorSimple({ iframeUrl }: VisualEditorSimpleProps) {
   // Обработка сообщений от iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent<IframeMessage>) => {
-      // Разрешаем все vercel домены
-      if (!event.origin.includes('vercel.app') && !event.origin.includes('localhost')) {
+      // Логируем ВСЕ сообщения для отладки
+      console.log('📨 Received message from', event.origin, ':', event.data)
+      
+      // Разрешаем все vercel домены и localhost
+      const allowedOrigins = ['vercel.app', 'localhost', '127.0.0.1']
+      if (!allowedOrigins.some(origin => event.origin.includes(origin))) {
+        console.log('⚠️ Message from unauthorized origin, ignoring:', event.origin)
         return
       }
 
-      console.log('📨 Message from', event.origin, ':', event.data.type)
+      // Проверяем структуру сообщения
+      if (!event.data || !event.data.type) {
+        console.warn('⚠️ Invalid message format:', event.data)
+        return
+      }
+
+      console.log('✅ Processing message type:', event.data.type)
 
       const { type, payload } = event.data
 
       switch (type) {
         case 'READY':
-          console.log('✅ Editor ready');
+          console.log('✅ Editor ready, requesting elements...');
+          // Запрашиваем элементы сразу после готовности
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage({
+              type: 'REQUEST_ELEMENTS'
+            }, '*');
+          }
           break
 
         case 'ELEMENTS_LOADED':
@@ -69,26 +86,57 @@ export function VisualEditorSimple({ iframeUrl }: VisualEditorSimpleProps) {
 
   // Инжекция скрипта при загрузке iframe
   useEffect(() => {
-    if (!iframeRef.current) return
+    if (!iframeRef.current) {
+      console.warn('⚠️ iframeRef.current is null')
+      return
+    }
 
     const iframe = iframeRef.current
+    console.log('🔄 Setting up iframe injection for:', iframeUrl)
 
     const handleLoad = async () => {
-      console.log('🔄 Iframe loaded, injecting script...')
+      console.log('🔄 Iframe onload event fired')
+      
+      // Ждем немного для полной загрузки DOM
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      console.log('📝 Starting script injection...')
       try {
         await injectSimpleEditorScript(iframe)
-        console.log('✅ Script injection completed')
+        console.log('✅ Script injection promise resolved')
+        
+        // Дополнительная проверка через 2 секунды
+        setTimeout(() => {
+          console.log('🔍 Checking if elements were loaded...')
+          if (editableElements.length === 0) {
+            console.warn('⚠️ No elements loaded after 2 seconds, trying to request manually...')
+            // Пытаемся запросить элементы вручную
+            iframe.contentWindow?.postMessage({
+              type: 'REQUEST_ELEMENTS'
+            }, '*')
+          }
+        }, 2000)
       } catch (error) {
         console.error('❌ Script injection failed:', error)
+        toast.error('Ошибка загрузки редактора. Проверьте консоль.')
       }
     }
 
-    if (iframe.contentDocument?.readyState === 'complete') {
-      handleLoad()
-    } else {
+    // Проверяем готовность iframe
+    try {
+      if (iframe.contentDocument?.readyState === 'complete') {
+        console.log('✅ Iframe already complete, injecting immediately')
+        handleLoad()
+      } else {
+        console.log('⏳ Iframe not ready, waiting for onload event')
+        iframe.onload = handleLoad
+      }
+    } catch (e) {
+      // CORS блокирует доступ - это нормально
+      console.log('⚠️ Cannot check iframe readyState (CORS), using onload event')
       iframe.onload = handleLoad
     }
-  }, [iframeUrl])
+  }, [iframeUrl, editableElements.length])
 
   // Обновление элемента
   const handleUpdateElement = () => {

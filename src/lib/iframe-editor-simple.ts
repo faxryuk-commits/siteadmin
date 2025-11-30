@@ -204,18 +204,48 @@ export const SIMPLE_EDITOR_SCRIPT = `
   });
 
   // Отправка элементов при загрузке
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(sendElements, 500);
-  } else {
-    window.addEventListener('load', () => setTimeout(sendElements, 500));
-    document.addEventListener('DOMContentLoaded', () => setTimeout(sendElements, 500));
+  function trySendElements() {
+    console.log('🔄 Attempting to send elements, readyState:', document.readyState);
+    sendElements();
   }
 
-  // Дополнительная попытка
-  setTimeout(sendElements, 2000);
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    console.log('✅ DOM ready, sending elements in 500ms');
+    setTimeout(trySendElements, 500);
+  } else {
+    console.log('⏳ DOM not ready, waiting for events');
+    window.addEventListener('load', () => {
+      console.log('✅ Load event fired, sending elements in 500ms');
+      setTimeout(trySendElements, 500);
+    });
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('✅ DOMContentLoaded fired, sending elements in 500ms');
+      setTimeout(trySendElements, 500);
+    });
+  }
+
+  // Дополнительные попытки
+  setTimeout(() => {
+    console.log('🔄 Retry 1: sending elements after 2 seconds');
+    trySendElements();
+  }, 2000);
+
+  setTimeout(() => {
+    console.log('🔄 Retry 2: sending elements after 5 seconds');
+    trySendElements();
+  }, 5000);
 
   // Уведомление о готовности
+  console.log('📤 Sending READY message to parent');
   window.parent.postMessage({ type: 'READY' }, '*');
+
+  // Обработчик запроса элементов от родителя
+  window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'REQUEST_ELEMENTS') {
+      console.log('📥 Received REQUEST_ELEMENTS, sending elements immediately');
+      trySendElements();
+    }
+  });
 })();
 `
 
