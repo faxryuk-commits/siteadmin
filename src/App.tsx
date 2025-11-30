@@ -7,15 +7,25 @@ import { Dashboard } from './pages/Dashboard'
 import { VisualEditor } from './components/VisualEditor'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
-import { SITE_URL, ADMIN_EDIT_TOKEN } from './lib/config'
+import { SITE_URL, ADMIN_EDIT_TOKEN, PROTECTION_BYPASS_SECRET } from './lib/config'
 
 function EditorPage() {
   const { currentPage } = useContent()
   // Используем текущую страницу или дефолтный путь
   const pagePath = currentPage?.path || '/'
   
-  // Используем безопасный токен из конфигурации
-  const iframeUrl = `${SITE_URL}${pagePath}?admin_token=${ADMIN_EDIT_TOKEN}&edit_mode=true`
+  // Строим URL с токеном и секретом для обхода защиты
+  const params = new URLSearchParams({
+    admin_token: ADMIN_EDIT_TOKEN,
+    edit_mode: 'true',
+  })
+  
+  // Добавляем секрет для обхода Vercel Deployment Protection
+  if (PROTECTION_BYPASS_SECRET) {
+    params.set('x-vercel-protection-bypass', PROTECTION_BYPASS_SECRET)
+  }
+  
+  const iframeUrl = `${SITE_URL}${pagePath}?${params.toString()}`
 
   return <VisualEditor iframeUrl={iframeUrl} />
 }
