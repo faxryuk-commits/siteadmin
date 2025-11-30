@@ -70,6 +70,20 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
     // Инжектируем скрипт редактора
     injectEditorScript(iframe).then(() => {
       setIsLoading(false)
+    }).catch((error) => {
+      console.error('Error injecting script:', error)
+      setIsLoading(false)
+      // Проверяем, заблокирован ли iframe
+      setTimeout(() => {
+        try {
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+          if (!iframeDoc) {
+            toast.error('Сайт блокирует загрузку в iframe (X-Frame-Options: DENY). Нужно убрать этот заголовок на сайте.')
+          }
+        } catch (e) {
+          toast.error('Не удалось загрузить сайт в iframe. Проверьте настройки X-Frame-Options на сайте.')
+        }
+      }, 2000)
     })
 
     return () => {
@@ -279,6 +293,10 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
             className="w-full h-full border-0"
             title="Preview"
             allow="same-origin"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+            onError={() => {
+              toast.error('Ошибка загрузки сайта. Возможно, сайт блокирует загрузку в iframe (X-Frame-Options)')
+            }}
           />
           
           {!isPreviewMode && selectedElement && (
