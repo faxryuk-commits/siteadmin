@@ -4,7 +4,7 @@ import { ContentProvider, useContent } from './contexts/ContentContext'
 import { Toaster } from 'sonner'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
-import { VisualEditor } from './components/VisualEditor'
+import { VisualEditorSimple } from './components/VisualEditorSimple'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
 import { SITE_URL, ADMIN_EDIT_TOKEN, PROTECTION_BYPASS_SECRET } from './lib/config'
@@ -27,7 +27,7 @@ function EditorPage() {
   
   const iframeUrl = `${SITE_URL}${pagePath}?${params.toString()}`
 
-  return <VisualEditor iframeUrl={iframeUrl} />
+  return <VisualEditorSimple iframeUrl={iframeUrl} />
 }
 
 function App() {
