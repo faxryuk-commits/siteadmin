@@ -217,25 +217,33 @@ export const EDITOR_SCRIPT = `
   // Загружаем элементы при загрузке страницы
   function sendElements() {
     try {
+      console.log('🔍 Scanning for editable elements...');
       const elements = scanEditableElements();
       editableElements = elements;
       
-      console.log('Sending elements to parent:', elements.length);
+      console.log('📤 Sending', elements.length, 'elements to parent');
+      console.log('Elements:', elements.slice(0, 5).map(e => ({ type: e.type, label: e.label }))); // Логируем первые 5 для отладки
       
-      window.parent.postMessage({
+      const message = {
         type: 'ELEMENTS_LOADED',
         payload: { elements }
-      }, '*');
+      };
+      
+      window.parent.postMessage(message, '*');
+      console.log('✅ Message sent to parent');
     } catch (error) {
-      console.error('Error sending elements:', error);
+      console.error('❌ Error sending elements:', error);
     }
   }
 
   // Пытаемся отправить элементы сразу, если DOM готов
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    console.log('📄 DOM ready, sending elements in 500ms...');
     setTimeout(sendElements, 500);
   } else {
+    console.log('⏳ Waiting for load event...');
     window.addEventListener('load', function() {
+      console.log('✅ Load event fired, sending elements in 500ms...');
       setTimeout(sendElements, 500);
     });
   }
@@ -243,9 +251,18 @@ export const EDITOR_SCRIPT = `
   // Также пытаемся отправить через DOMContentLoaded
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
+      console.log('✅ DOMContentLoaded fired, sending elements in 500ms...');
       setTimeout(sendElements, 500);
     });
   }
+  
+  // Дополнительная попытка через 2 секунды (на случай, если предыдущие не сработали)
+  setTimeout(function() {
+    if (editableElements.length === 0) {
+      console.log('🔄 Retry: sending elements after 2 seconds...');
+      sendElements();
+    }
+  }, 2000);
 
   // Обработчик сообщений от родительского окна
   window.addEventListener('message', function(event) {
@@ -276,38 +293,56 @@ export const EDITOR_SCRIPT = `
 
 // Функция для инжекции скрипта в iframe
 export function injectEditorScript(iframe: HTMLIFrameElement) {
-  return new Promise<void>((resolve) => {
-    iframe.onload = () => {
+  return new Promise<void>((resolve, reject) => {
+    const doInject = () => {
       try {
         const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
         if (!iframeDoc) {
-          console.error('Cannot access iframe document');
-          resolve();
+          console.error('❌ Cannot access iframe document - possible CORS or X-Frame-Options issue');
+          reject(new Error('Cannot access iframe document'));
           return;
         }
 
         // Проверяем, не инжектирован ли уже скрипт
         if ((iframe.contentWindow as any)?.__DELEVER_EDITOR_INITIALIZED__) {
+          console.log('✅ Script already initialized');
           resolve();
           return;
         }
 
+        console.log('📝 Injecting editor script into iframe...');
+        
         // Создаем и добавляем скрипт
         const script = iframeDoc.createElement('script');
         script.textContent = EDITOR_SCRIPT;
+        script.onerror = (error) => {
+          console.error('❌ Script injection error:', error);
+          reject(error);
+        };
         iframeDoc.head.appendChild(script);
 
-        resolve();
+        // Проверяем, что скрипт выполнился
+        setTimeout(() => {
+          if ((iframe.contentWindow as any)?.__DELEVER_EDITOR_INITIALIZED__) {
+            console.log('✅ Script injected and initialized successfully');
+            resolve();
+          } else {
+            console.warn('⚠️ Script injected but not initialized - may need more time');
+            resolve(); // Разрешаем, так как скрипт может инициализироваться позже
+          }
+        }, 100);
       } catch (error) {
-        console.error('Error injecting script:', error);
-        resolve();
+        console.error('❌ Error injecting script:', error);
+        reject(error);
       }
     };
 
-    // Если iframe уже загружен
     if (iframe.contentDocument?.readyState === 'complete') {
-      iframe.onload = null;
-      injectEditorScript(iframe);
+      doInject();
+    } else {
+      iframe.onload = () => {
+        setTimeout(doInject, 100); // Небольшая задержка для полной загрузки
+      };
     }
   });
 }

@@ -35,12 +35,18 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
       // Проверяем источник сообщения (разрешаем все vercel домены)
       const allowedOrigins = ['vercel.app', 'localhost', '127.0.0.1']
       if (!allowedOrigins.some(origin => event.origin.includes(origin))) {
-        console.log('Message from unauthorized origin:', event.origin)
+        console.log('Message from unauthorized origin:', event.origin, 'Expected:', allowedOrigins)
         return
       }
       
       // Логируем все сообщения для отладки
-      console.log('Received message:', event.data)
+      console.log('✅ Received message from', event.origin, ':', event.data)
+      
+      // Проверяем структуру сообщения
+      if (!event.data || !event.data.type) {
+        console.warn('⚠️ Invalid message format:', event.data)
+        return
+      }
 
       const { type, payload } = event.data
 
