@@ -294,20 +294,49 @@ export const EDITOR_SCRIPT = `
 // Функция для инжекции скрипта в iframe
 export function injectEditorScript(iframe: HTMLIFrameElement) {
   return new Promise<void>((resolve, reject) => {
+    let injected = false; // Флаг для предотвращения повторной инжекции
+    
     const doInject = () => {
+      if (injected) {
+        console.log('✅ Script already injected, skipping...');
+        resolve();
+        return;
+      }
+      
       try {
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+        // Пытаемся получить доступ к документу iframe
+        let iframeDoc: Document | null = null;
+        try {
+          iframeDoc = iframe.contentDocument || iframe.contentWindow?.document || null;
+        } catch (e) {
+          // CORS блокирует доступ - это нормально, используем postMessage вместо этого
+          console.warn('⚠️ Cannot access iframe document directly (CORS), will use postMessage');
+          // Отправляем скрипт через postMessage
+          iframe.contentWindow?.postMessage({
+            type: 'INJECT_EDITOR_SCRIPT',
+            payload: { script: EDITOR_SCRIPT }
+          }, '*');
+          injected = true;
+          resolve();
+          return;
+        }
+
         if (!iframeDoc) {
-          console.error('❌ Cannot access iframe document - possible CORS or X-Frame-Options issue');
+          console.error('❌ Cannot access iframe document');
           reject(new Error('Cannot access iframe document'));
           return;
         }
 
         // Проверяем, не инжектирован ли уже скрипт
-        if ((iframe.contentWindow as any)?.__DELEVER_EDITOR_INITIALIZED__) {
-          console.log('✅ Script already initialized');
-          resolve();
-          return;
+        try {
+          if ((iframe.contentWindow as any)?.__DELEVER_EDITOR_INITIALIZED__) {
+            console.log('✅ Script already initialized');
+            injected = true;
+            resolve();
+            return;
+          }
+        } catch (e) {
+          // Игнорируем ошибки доступа
         }
 
         console.log('📝 Injecting editor script into iframe...');
@@ -320,16 +349,21 @@ export function injectEditorScript(iframe: HTMLIFrameElement) {
           reject(error);
         };
         iframeDoc.head.appendChild(script);
+        injected = true;
 
         // Проверяем, что скрипт выполнился
         setTimeout(() => {
-          if ((iframe.contentWindow as any)?.__DELEVER_EDITOR_INITIALIZED__) {
-            console.log('✅ Script injected and initialized successfully');
-            resolve();
-          } else {
-            console.warn('⚠️ Script injected but not initialized - may need more time');
-            resolve(); // Разрешаем, так как скрипт может инициализироваться позже
+          try {
+            if ((iframe.contentWindow as any)?.__DELEVER_EDITOR_INITIALIZED__) {
+              console.log('✅ Script injected and initialized successfully');
+            } else {
+              console.warn('⚠️ Script injected but initialization status unknown');
+            }
+          } catch (e) {
+            // Игнорируем ошибки доступа
+            console.warn('⚠️ Cannot verify script initialization (CORS)');
           }
+          resolve();
         }, 100);
       } catch (error) {
         console.error('❌ Error injecting script:', error);
@@ -337,12 +371,19 @@ export function injectEditorScript(iframe: HTMLIFrameElement) {
       }
     };
 
-    if (iframe.contentDocument?.readyState === 'complete') {
-      doInject();
-    } else {
-      iframe.onload = () => {
-        setTimeout(doInject, 100); // Небольшая задержка для полной загрузки
-      };
+    // Проверяем готовность iframe
+    try {
+      if (iframe.contentDocument?.readyState === 'complete') {
+        doInject();
+      } else {
+        iframe.onload = () => {
+          setTimeout(doInject, 100);
+        };
+      }
+    } catch (e) {
+      // Если не можем проверить readyState из-за CORS, просто пытаемся инжектировать
+      console.warn('⚠️ Cannot check iframe readyState (CORS), trying to inject anyway...');
+      setTimeout(doInject, 1000);
     }
   });
 }

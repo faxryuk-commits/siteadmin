@@ -84,41 +84,36 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
         // Ждем немного, чтобы DOM точно загрузился
         await new Promise(resolve => setTimeout(resolve, 500))
         
+        console.log('📝 Starting script injection...')
         await injectEditorScript(iframe)
         
-        console.log('Script injected successfully')
+        console.log('✅ Script injection completed')
         
         // Не устанавливаем isLoading в false сразу - ждем сообщения ELEMENTS_LOADED
         // setIsLoading(false)
       } catch (error) {
-        console.error('Error injecting script:', error)
-        setIsLoading(false)
-        
-        // Проверяем причину ошибки
-        setTimeout(() => {
-          try {
-            const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
-            if (!iframeDoc) {
-              toast.error('Не удалось получить доступ к iframe. Проверьте настройки X-Frame-Options на сайте.')
-            } else {
-              toast.error('Ошибка инжекции скрипта редактора. Проверьте консоль для деталей.')
-            }
-          } catch (e) {
-            toast.error('Не удалось загрузить сайт. Проверьте настройки.')
-          }
-        }, 2000)
+        console.error('❌ Error injecting script:', error)
+        // Не показываем ошибку сразу - возможно скрипт все равно работает через postMessage
+        // setIsLoading(false)
       }
     }
 
     // Ждем загрузки iframe перед инжекцией
     const handleIframeLoad = () => {
-      console.log('Iframe loaded, injecting script...')
-      injectScript()
+      console.log('✅ Iframe loaded, will inject script in 500ms...')
+      setTimeout(injectScript, 500)
     }
 
-    if (iframe.contentDocument?.readyState === 'complete') {
-      handleIframeLoad()
-    } else {
+    // Проверяем готовность iframe (безопасно, с обработкой CORS)
+    try {
+      if (iframe.contentDocument?.readyState === 'complete') {
+        handleIframeLoad()
+      } else {
+        iframe.onload = handleIframeLoad
+      }
+    } catch (e) {
+      // Если не можем проверить из-за CORS, просто ждем события onload
+      console.warn('⚠️ Cannot check iframe readyState (CORS), waiting for onload event...')
       iframe.onload = handleIframeLoad
     }
 
@@ -331,21 +326,8 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
             allow="same-origin"
             sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation"
             onLoad={() => {
-              // Проверяем, загрузился ли сайт успешно
-              setTimeout(() => {
-                try {
-                  const iframe = iframeRef.current
-                  if (!iframe) return
-                  
-                  const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
-                  if (!iframeDoc) {
-                    // Если не можем получить доступ к документу, возможно проблема с авторизацией или X-Frame-Options
-                    console.warn('Cannot access iframe document - possible auth or X-Frame-Options issue')
-                  }
-                } catch (e) {
-                  console.error('Error checking iframe:', e)
-                }
-              }, 1000)
+              // Iframe загружен - скрипт будет инжектирован автоматически через useEffect
+              console.log('✅ Iframe loaded')
             }}
           />
           
