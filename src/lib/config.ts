@@ -3,11 +3,15 @@ export const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://delever-site-p
 export const API_URL = import.meta.env.VITE_API_URL || 'https://api.delever.io'
 
 // Токен для доступа к сайту из админки
-// Генерируется автоматически или задается через переменную окружения
+// Должен быть задан через переменную окружения VITE_ADMIN_EDIT_TOKEN
 export const ADMIN_EDIT_TOKEN = import.meta.env.VITE_ADMIN_EDIT_TOKEN || 
   (typeof window !== 'undefined' 
     ? localStorage.getItem('admin-edit-token') || generateSecureToken()
-    : 'admin-access-fallback')
+    : 'dev-token-fallback')
+
+// Секрет для обхода Vercel Deployment Protection
+// Должен совпадать с секретом в "Protection Bypass for Automation" на сайте
+export const PROTECTION_BYPASS_SECRET = import.meta.env.VITE_PROTECTION_BYPASS_SECRET || ''
 
 // Генерация безопасного токена
 function generateSecureToken(): string {
