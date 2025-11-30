@@ -1,5 +1,4 @@
 // Прокси для обхода X-Frame-Options и CORS ограничений
-import { SITE_URL } from './config'
 
 // Альтернативный способ: используем прокси через наш API
 export function getProxiedUrl(url: string): string {
