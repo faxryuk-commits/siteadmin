@@ -32,10 +32,15 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
     const iframe = iframeRef.current
 
     const handleMessage = (event: MessageEvent<IframeMessage>) => {
-      // Проверяем источник сообщения
-      if (!event.origin.includes('vercel.app') && !event.origin.includes('localhost')) {
+      // Проверяем источник сообщения (разрешаем все vercel домены)
+      const allowedOrigins = ['vercel.app', 'localhost', '127.0.0.1']
+      if (!allowedOrigins.some(origin => event.origin.includes(origin))) {
+        console.log('Message from unauthorized origin:', event.origin)
         return
       }
+      
+      // Логируем все сообщения для отладки
+      console.log('Received message:', event.data)
 
       const { type, payload } = event.data
 
@@ -70,8 +75,15 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
     // Инжектируем скрипт редактора
     const injectScript = async () => {
       try {
+        // Ждем немного, чтобы DOM точно загрузился
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
         await injectEditorScript(iframe)
-        setIsLoading(false)
+        
+        console.log('Script injected successfully')
+        
+        // Не устанавливаем isLoading в false сразу - ждем сообщения ELEMENTS_LOADED
+        // setIsLoading(false)
       } catch (error) {
         console.error('Error injecting script:', error)
         setIsLoading(false)
@@ -81,23 +93,27 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
           try {
             const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
             if (!iframeDoc) {
-              // Если не можем получить доступ, проверяем причину
-              toast.error('Ошибка 401: Сайт требует авторизацию. Настройте сайт для работы с админкой (уберите проверку авторизации для параметра admin_token).')
+              toast.error('Не удалось получить доступ к iframe. Проверьте настройки X-Frame-Options на сайте.')
+            } else {
+              toast.error('Ошибка инжекции скрипта редактора. Проверьте консоль для деталей.')
             }
           } catch (e) {
-            toast.error('Не удалось загрузить сайт. Проверьте: 1) X-Frame-Options на сайте, 2) Настройки авторизации для admin_token')
+            toast.error('Не удалось загрузить сайт. Проверьте настройки.')
           }
         }, 2000)
       }
     }
 
     // Ждем загрузки iframe перед инжекцией
-    if (iframe.contentDocument?.readyState === 'complete') {
+    const handleIframeLoad = () => {
+      console.log('Iframe loaded, injecting script...')
       injectScript()
+    }
+
+    if (iframe.contentDocument?.readyState === 'complete') {
+      handleIframeLoad()
     } else {
-      iframe.onload = () => {
-        injectScript()
-      }
+      iframe.onload = handleIframeLoad
     }
 
     return () => {

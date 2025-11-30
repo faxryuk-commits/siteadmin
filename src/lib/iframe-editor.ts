@@ -138,7 +138,7 @@ export const EDITOR_SCRIPT = `
   }
 
   // Функция для обновления элемента
-  function updateElement(selector: string, content: string) {
+  function updateElement(selector, content) {
     try {
       const element = document.querySelector(selector);
       if (!element) return false;
