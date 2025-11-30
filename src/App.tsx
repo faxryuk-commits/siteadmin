@@ -11,9 +11,9 @@ import { SITE_URL } from './lib/config'
 
 function EditorPage() {
   const { currentPage } = useContent()
-  const iframeUrl = currentPage 
-    ? `${SITE_URL}${currentPage.path}?edit=true`
-    : SITE_URL
+  // Используем текущую страницу или дефолтный путь
+  const pagePath = currentPage?.path || '/'
+  const iframeUrl = `${SITE_URL}${pagePath}?edit=true`
 
   return <VisualEditor iframeUrl={iframeUrl} />
 }

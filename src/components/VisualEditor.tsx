@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useContent, ContentItem } from '@/contexts/ContentContext'
 import { 
@@ -10,10 +10,14 @@ import {
   Type,
   Square,
   MousePointerClick,
-  Image as ImageIcon
+  Image as ImageIcon,
+  RefreshCw,
+  Download
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { injectEditorScript, EditableElement, IframeMessage } from '@/lib/iframe-editor'
+import { SITE_URL } from '@/lib/config'
 
 interface VisualEditorProps {
   iframeUrl: string
@@ -22,147 +26,222 @@ interface VisualEditorProps {
 export function VisualEditor({ iframeUrl }: VisualEditorProps) {
   const { currentPage, updateContentItem, addContentItem, deleteContentItem, syncToSite } = useContent()
   const navigate = useNavigate()
-  const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null)
-  const [editingItem, setEditingItem] = useState<ContentItem | null>(null)
-  const [editValue, setEditValue] = useState('')
+  const [selectedElement, setSelectedElement] = useState<EditableElement | null>(null)
+  const [editingValue, setEditingValue] = useState('')
   const [isPreviewMode, setIsPreviewMode] = useState(false)
+  const [editableElements, setEditableElements] = useState<EditableElement[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
-  const handleItemClick = (item: ContentItem) => {
-    if (!isPreviewMode) {
-      setSelectedItem(item)
-      setEditingItem(item)
-      setEditValue(item.value)
+  // Инициализация редактора при загрузке iframe
+  useEffect(() => {
+    if (!iframeRef.current) return
+
+    const iframe = iframeRef.current
+
+    const handleMessage = (event: MessageEvent<IframeMessage>) => {
+      // Проверяем источник сообщения
+      if (!event.origin.includes('vercel.app') && !event.origin.includes('localhost')) {
+        return
+      }
+
+      const { type, payload } = event.data
+
+      switch (type) {
+        case 'ELEMENTS_LOADED':
+          if (payload?.elements) {
+            setEditableElements(payload.elements)
+            setIsLoading(false)
+            toast.success(`Загружено ${payload.elements.length} элементов`)
+          }
+          break
+
+        case 'ELEMENT_SELECTED':
+          if (payload && !isPreviewMode) {
+            setSelectedElement(payload)
+            setEditingValue(payload.content || '')
+          }
+          break
+
+        case 'ELEMENT_UPDATED':
+          if (payload?.success) {
+            toast.success('Элемент обновлен')
+          } else {
+            toast.error('Ошибка обновления элемента')
+          }
+          break
+      }
     }
-  }
 
-  const handleSave = () => {
-    if (editingItem && currentPage) {
-      updateContentItem(currentPage.id, editingItem.id, { value: editValue })
-      toast.success('Изменения сохранены')
-      setEditingItem(null)
+    window.addEventListener('message', handleMessage)
+
+    // Инжектируем скрипт редактора
+    injectEditorScript(iframe).then(() => {
+      setIsLoading(false)
+    })
+
+    return () => {
+      window.removeEventListener('message', handleMessage)
     }
-  }
+  }, [iframeUrl, isPreviewMode])
 
-  const handleAddElement = (type: ContentItem['type']) => {
-    if (!currentPage) return
+  // Функция для обновления элемента в iframe
+  const handleUpdateElement = () => {
+    if (!selectedElement || !iframeRef.current) return
 
-    const newItem: ContentItem = {
-      id: `item-${Date.now()}`,
-      type,
-      path: `${currentPage.path}.${type}-${Date.now()}`,
-      value: type === 'heading' ? 'Новый заголовок' : type === 'paragraph' ? 'Новый текст' : '',
-      label: type === 'heading' ? 'Заголовок' : type === 'paragraph' ? 'Текст' : 'Элемент',
-    }
+    const iframe = iframeRef.current.contentWindow
+    if (!iframe) return
 
-    addContentItem(currentPage.id, newItem)
-    toast.success('Элемент добавлен')
-  }
+    // Отправляем команду на обновление элемента
+    iframe.postMessage({
+      type: 'UPDATE_ELEMENT',
+      payload: {
+        selector: selectedElement.selector,
+        content: editingValue,
+      }
+    }, '*')
 
-  const handleDelete = () => {
-    if (selectedItem && currentPage) {
-      deleteContentItem(currentPage.id, selectedItem.id)
-      setSelectedItem(null)
-      setEditingItem(null)
-      toast.success('Элемент удален')
-    }
-  }
-
-  // TODO: Реализовать drag and drop функциональность
-
-  const handleSync = async () => {
-    await syncToSite()
-    toast.success('Изменения синхронизированы с сайтом')
-  }
-
-  if (!currentPage) {
-    return (
-      <div className="flex items-center justify-center h-full min-h-[calc(100vh-4rem)]">
-        <div className="text-center p-8">
-          <h3 className="text-xl font-semibold text-brand-darkBlue mb-2">
-            Страница не выбрана
-          </h3>
-          <p className="text-brand-darkBlue/60 mb-4">
-            Выберите страницу для редактирования на дашборде
-          </p>
-          <button
-            onClick={() => navigate('/')}
-            className="px-6 py-2 bg-gradient-dark text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
-          >
-            Перейти к дашборду
-          </button>
-        </div>
-      </div>
+    // Обновляем локальное состояние
+    setEditableElements(prev => 
+      prev.map(el => 
+        el.id === selectedElement.id 
+          ? { ...el, content: editingValue }
+          : el
+      )
     )
+
+    toast.success('Изменения применены')
   }
+
+  // Функция для выделения элемента в списке
+  const handleElementSelect = (element: EditableElement) => {
+    if (isPreviewMode) return
+
+    setSelectedElement(element)
+    setEditingValue(element.content || '')
+
+    // Выделяем элемент в iframe
+    const iframe = iframeRef.current?.contentWindow
+    if (iframe) {
+      iframe.postMessage({
+        type: 'HIGHLIGHT_ELEMENT',
+        payload: { selector: element.selector }
+      }, '*')
+    }
+  }
+
+  // Функция для перезагрузки элементов
+  const handleReloadElements = () => {
+    setIsLoading(true)
+    setEditableElements([])
+    
+    if (iframeRef.current) {
+      const iframe = iframeRef.current
+      injectEditorScript(iframe).then(() => {
+        // Перезагружаем iframe для повторного сканирования
+        iframe.src = iframe.src
+      })
+    }
+  }
+
+  // Функция для синхронизации с сайтом
+  const handleSync = async () => {
+    try {
+      // Сохраняем все изменения в localStorage
+      const changes = editableElements.map(el => ({
+        selector: el.selector,
+        content: el.content,
+        type: el.type,
+      }))
+
+      localStorage.setItem('delever-editor-changes', JSON.stringify(changes))
+      
+      // Импортируем функцию сохранения
+      const { saveElementChanges } = await import('@/lib/api')
+      await saveElementChanges(changes)
+      
+      toast.success('Изменения синхронизированы с сайтом')
+    } catch (error) {
+      toast.error('Ошибка синхронизации')
+      console.error(error)
+    }
+  }
+
+  // Определяем, есть ли выбранная страница
+  const pagePath = iframeUrl.includes('?') 
+    ? iframeUrl.split('?')[0].replace(SITE_URL, '') 
+    : '/'
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
       {/* Левая панель - Элементы */}
-      <div className="w-72 bg-white border-r border-gray-200 flex flex-col shadow-sm">
+      <div className="w-80 bg-white border-r border-gray-200 flex flex-col shadow-sm">
         <div className="p-4 border-b border-gray-200 bg-brand-lightBlue/30">
-          <h3 className="font-semibold text-brand-darkBlue mb-3">Добавить элемент</h3>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-brand-darkBlue">Элементы страницы</h3>
             <button
-              onClick={() => handleAddElement('heading')}
-              className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 flex flex-col items-center gap-1"
+              onClick={handleReloadElements}
+              className="p-1.5 rounded hover:bg-gray-100 text-brand-darkBlue/70 hover:text-brand-darkBlue transition-colors"
+              title="Обновить список элементов"
             >
-              <Type className="h-5 w-5 text-brand-darkBlue" />
-              <span className="text-xs text-brand-darkBlue/70">Заголовок</span>
-            </button>
-            <button
-              onClick={() => handleAddElement('paragraph')}
-              className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 flex flex-col items-center gap-1"
-            >
-              <Square className="h-5 w-5 text-brand-darkBlue" />
-              <span className="text-xs text-brand-darkBlue/70">Текст</span>
-            </button>
-            <button
-              onClick={() => handleAddElement('image')}
-              className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 flex flex-col items-center gap-1"
-            >
-              <ImageIcon className="h-5 w-5 text-brand-darkBlue" />
-              <span className="text-xs text-brand-darkBlue/70">Изображение</span>
-            </button>
-            <button
-              onClick={() => handleAddElement('button')}
-              className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 flex flex-col items-center gap-1"
-            >
-              <MousePointerClick className="h-5 w-5 text-brand-darkBlue" />
-              <span className="text-xs text-brand-darkBlue/70">Кнопка</span>
+              <RefreshCw className="h-4 w-4" />
             </button>
           </div>
+          {isLoading && (
+            <div className="text-xs text-brand-darkBlue/50">
+              Загрузка элементов...
+            </div>
+          )}
+          {!isLoading && editableElements.length === 0 && (
+            <div className="text-xs text-brand-darkBlue/50">
+              Кликните на элементы на странице для редактирования
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
-          <h4 className="text-sm font-medium text-brand-darkBlue mb-3">Структура страницы</h4>
-          {currentPage.sections.length === 0 ? (
-            <div className="text-center py-8 text-brand-darkBlue/50 text-sm">
-              <p>Нет элементов</p>
-              <p className="text-xs mt-1">Добавьте элементы выше</p>
-            </div>
-          ) : (
-          <div className="space-y-1">
-            {currentPage.sections.map((section) => (
-              <div
-                key={section.id}
-                onClick={() => handleItemClick(section)}
-                className={cn(
-                  'p-2 rounded cursor-pointer text-sm',
-                  selectedItem?.id === section.id
-                    ? 'bg-brand-lightBlue text-brand-darkBlue'
-                    : 'hover:bg-gray-50 text-brand-darkBlue/70'
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span>{section.label}</span>
-                  <span className="text-xs text-brand-darkBlue/40 capitalize">
-                    {section.type}
-                  </span>
-                </div>
+          {editableElements.length > 0 ? (
+            <>
+              <div className="text-xs text-brand-darkBlue/60 mb-2">
+                Найдено: {editableElements.length} элементов
               </div>
-            ))}
-          </div>
+              <div className="space-y-1">
+                {editableElements.map((element) => (
+                  <div
+                    key={element.id}
+                    onClick={() => handleElementSelect(element)}
+                    className={cn(
+                      'p-2 rounded cursor-pointer text-sm transition-colors',
+                      selectedElement?.id === element.id
+                        ? 'bg-brand-lightBlue text-brand-darkBlue font-medium'
+                        : 'hover:bg-gray-50 text-brand-darkBlue/70'
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{element.label}</div>
+                        <div className="text-xs text-brand-darkBlue/50 mt-0.5 truncate">
+                          {element.selector}
+                        </div>
+                      </div>
+                      <span className="text-xs text-brand-darkBlue/40 capitalize px-1.5 py-0.5 bg-gray-100 rounded">
+                        {element.type}
+                      </span>
+                    </div>
+                    {element.content && (
+                      <div className="text-xs text-brand-darkBlue/60 mt-1 truncate">
+                        {element.content.substring(0, 60)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-8 text-brand-darkBlue/50 text-sm">
+              <p>Элементы не загружены</p>
+              <p className="text-xs mt-1">Кликните на элементы на странице</p>
+            </div>
           )}
         </div>
       </div>
@@ -184,9 +263,7 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
               {isPreviewMode ? 'Просмотр' : 'Редактирование'}
             </button>
             <div className="text-sm text-brand-darkBlue/60">
-              <span className="font-medium">{currentPage.name}</span>
-              <span className="mx-2">•</span>
-              <span>{currentPage.path}</span>
+              <span className="font-medium">{pagePath}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -206,19 +283,23 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
             src={iframeUrl}
             className="w-full h-full border-0"
             title="Preview"
+            allow="same-origin"
           />
           
-          {!isPreviewMode && selectedItem && (
+          {!isPreviewMode && selectedElement && (
             <div className="absolute top-4 right-4 bg-white rounded-xl shadow-large border border-gray-200 p-5 w-96 z-10">
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
                 <div>
                   <h4 className="font-semibold text-brand-darkBlue">Редактирование</h4>
-                  <p className="text-xs text-brand-darkBlue/50 mt-1">{selectedItem.label}</p>
+                  <p className="text-xs text-brand-darkBlue/50 mt-1">{selectedElement.type}</p>
+                  <p className="text-xs text-brand-darkBlue/40 mt-1 font-mono truncate">
+                    {selectedElement.selector}
+                  </p>
                 </div>
                 <button
                   onClick={() => {
-                    setSelectedItem(null)
-                    setEditingItem(null)
+                    setSelectedElement(null)
+                    setEditingValue('')
                   }}
                   className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded hover:bg-gray-100"
                 >
@@ -229,39 +310,64 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-brand-darkBlue mb-2">
-                    {selectedItem.label}
+                    Содержимое
                   </label>
-                  {selectedItem.type === 'paragraph' || selectedItem.type === 'heading' ? (
+                  {selectedElement.type === 'image' ? (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={editingValue}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        placeholder="URL изображения"
+                        className="w-full p-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-darkBlue"
+                      />
+                      {editingValue && (
+                        <img 
+                          src={editingValue} 
+                          alt="Preview" 
+                          className="w-full h-32 object-cover rounded border border-gray-200"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none'
+                          }}
+                        />
+                      )}
+                    </div>
+                  ) : selectedElement.type === 'heading' || selectedElement.type === 'paragraph' || selectedElement.type === 'text' ? (
                     <textarea
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
+                      value={editingValue}
+                      onChange={(e) => setEditingValue(e.target.value)}
                       className="w-full p-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-darkBlue"
-                      rows={4}
+                      rows={6}
+                      placeholder="Введите текст..."
                     />
                   ) : (
                     <input
                       type="text"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
+                      value={editingValue}
+                      onChange={(e) => setEditingValue(e.target.value)}
                       className="w-full p-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-darkBlue"
+                      placeholder="Введите значение..."
                     />
                   )}
                 </div>
                 
                 <div className="flex gap-2">
                   <button
-                    onClick={handleSave}
-                    className="flex-1 px-4 py-2 bg-gradient-dark text-white rounded-lg text-sm font-medium hover:opacity-90"
+                    onClick={handleUpdateElement}
+                    className="flex-1 px-4 py-2 bg-gradient-dark text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
                   >
-                    Сохранить
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
+                    Применить
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+              <div className="text-center">
+                <RefreshCw className="h-8 w-8 animate-spin text-brand-darkBlue mx-auto mb-2" />
+                <p className="text-brand-darkBlue/70">Загрузка элементов...</p>
               </div>
             </div>
           )}
@@ -270,4 +376,3 @@ export function VisualEditor({ iframeUrl }: VisualEditorProps) {
     </div>
   )
 }
-
