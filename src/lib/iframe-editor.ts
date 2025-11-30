@@ -24,9 +24,9 @@ export const EDITOR_SCRIPT = `
   if (window.__DELEVER_EDITOR_INITIALIZED__) return;
   window.__DELEVER_EDITOR_INITIALIZED__ = true;
 
-  const EDITOR_MODE = new URLSearchParams(window.location.search).get('edit') === 'true';
-  
-  if (!EDITOR_MODE) return;
+  // Режим редактирования всегда активен при загрузке из админки
+  // Параметр ?edit=true не обязателен, так как может вызывать проблемы с авторизацией
+  const EDITOR_MODE = true;
 
   let selectedElement = null;
   let editableElements = [];
